@@ -6,50 +6,26 @@ from pathlib import Path
 from typing import List, Tuple
 
 import networkx as nx
-import torch
 import torch_geometric
+import torch_geometric.utils as tg_utils
 from networkx.readwrite.graphml import write_graphml_lxml
 from torch_geometric import seed_everything
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-import torch_geometric.utils as tg_utils
 
 
-def reduce_graph(batch: torch_geometric.data.Batch,
-                 trained_model: torch.nn.Module) -> torch_geometric.data.Data:
-    """
-    Reduce the given graph.
-    First it is extracted from the batch, then reduce with the trained model.
-
-    Args:
-        batch (torch_geometric): Graph to reduce
-        trained_model (torch.nn.Module): trained model used to reduce the graph.
-
-    Returns:
-        torch_geometric.Data: The reduced graph
-    """
-    _, reduced_graph_x, reduced_graph_edge_index, _ = trained_model(batch.x,
-                                                                    batch.edge_index,
-                                                                    batch.batch)
-
-    reduced_graph = Data(x=reduced_graph_x,
-                         edge_index=reduced_graph_edge_index)
-
-    return reduced_graph
-
-
-def convert_2_nx(reduced_graph: torch_geometric.data.Data) -> nx.Graph:
+def convert_2_nx(graph: torch_geometric.data.Data) -> nx.Graph:
     """
     Convert the graph from torch_geometric.Data to nx with the correct
     formatting of the node features.
 
     Args:
-        reduced_graph (torch_geometric.Data): the graph to convert
+        graph (torch_geometric.Data): the graph to convert
 
     Returns:
         nx.Graph: the converted graph
     """
-    nx_graph = tg_utils.to_networkx(reduced_graph,
+    nx_graph = tg_utils.to_networkx(graph,
                                     node_attrs=['x'],
                                     to_undirected=True)
 
@@ -59,7 +35,7 @@ def convert_2_nx(reduced_graph: torch_geometric.data.Data) -> nx.Graph:
         for k, v in d.items():
             if isinstance(v, float):
                 print('A float has to be changed is float', )
-                v = [v] * reduced_graph.x.size(1)
+                v = [v] * graph.x.size(1)
             d[k] = str(v)
 
     return nx_graph
@@ -84,40 +60,9 @@ def save_graph(nx_reduced_graph: nx.Graph, idx: int, folder: str) -> None:
                        infer_numeric_types=True)
 
 
-def parse_class_to_xml(name_set: str,
-                       classes: List[Tuple[int, int]],
-                       folder: str) -> None:
-    """
-    Parse the graph classes into xml file
-
-    Args:
-        name_set (str): name of the set to save (e.g., train, val, test)
-        classes (List[Tuple[int, int]]):
-            list containing the idx and class tuple for each graph
-        folder (str): folder where to save the classes
-
-    Returns:
-        None
-    """
-    graph_collection = ET.Element('GraphCollection')
-
-    finger_prints = ET.SubElement(graph_collection, 'fingerprints')
-
-    for idx_graph, class_ in classes:
-        print_ = ET.SubElement(finger_prints, 'print')
-        print_.set('file', f'gr_{idx_graph}.graphml')
-        print_.set('class', str(class_))
-
-    b_xml = ET.tostring(graph_collection).decode()
-    newxml = md.parseString(b_xml)
-
-    Path(folder).mkdir(parents=True, exist_ok=True)
-    filename = join(folder, f'{name_set}.cxl')
-    with open(filename, mode='w') as f:
-        f.write(newxml.toprettyxml(indent=' ', newl='\n'))
-
-
-def save_classes(graph_classes: defaultdict, folder: str) -> None:
+def save_classes(graph_classes: List[Tuple[int, int]],
+                 name_set: str,
+                 folder: str) -> None:
     """
     Save the corresponding classes for each graph.
 
@@ -131,60 +76,43 @@ def save_classes(graph_classes: defaultdict, folder: str) -> None:
     Returns:
         None
     """
-    for name_set, idx_classes in graph_classes.items():
-        parse_class_to_xml(name_set, idx_classes, folder)
+    graph_collection = ET.Element('GraphCollection')
 
-from src.models.graph_u_net import GraphUNet
+    finger_prints = ET.SubElement(graph_collection, 'fingerprints')
 
-def convert(dataset: str, seed: int, format: str='graphml') -> None:
+    for idx_graph, class_ in graph_classes:
+        print_ = ET.SubElement(finger_prints, 'print')
+        print_.set('file', f'gr_{idx_graph}.graphml')
+        print_.set('class', str(class_))
+
+    b_xml = ET.tostring(graph_collection).decode()
+    newxml = md.parseString(b_xml)
+
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    filename = join(folder, f'{name_set}.cxl')
+    with open(filename, mode='w') as f:
+        f.write(newxml.toprettyxml(indent=' ', newl='\n'))
+
+# from src.models.graph_u_net import GraphUNet
+
+def convert_and_save(name_set: str,
+                     dataset: torch_geometric.datasets,
+                     indices: List[int],
+                     folder: str,
+                     format_: str='graphml') -> None:
     """Convert the graphs into the given format"""
-    pass
 
-def start_converting(args, dataset_, seeds):
+    graph_classes = []
 
-    dataset_size = len(dataset_)
+    for graph, idx in zip(dataset, indices):
 
-    perc_train = args.percentage_train / 100
-    perc_val = (1 - perc_train) / 2
-    train_size = int(dataset_size * perc_train)
-    val_size = int(dataset_size * perc_val)
+        nx_reduced_graph = convert_2_nx(graph)
 
-    dataset = dataset_.copy()
-    for idx, seed in enumerate(seeds):
-        print(f'Convert seed: {seed} [{idx + 1}/{len(seeds)}]')
+        save_graph(nx_reduced_graph, idx, folder)
 
-        seed_everything(seed)
-        dataset = dataset.shuffle()
-        convert_loader = DataLoader(dataset, batch_size=1, shuffle=False)
+        # Get the class value
+        graph_classes.append((idx, int(graph.y.data[0])))
 
-#         trained_model = GraphUNet(in_channels=dataset.num_node_features,
-#                                   hidden_channels=args.dim_hidden_vec,
-#                                   dim_gr_embedding=args.dim_gr_embedding,
-#                                   out_channels=dataset.num_classes,
-#                                   depth=args.depth)
-#         trained_model.load_state_dict(torch.load(join(args.folder_results, f'trained_models/trained_gnn_{seed}.pt')))
-#         trained_model.eval()
-
-        folder = f'{args.folder_results}/{seed}/data'
-        graph_classes = defaultdict(list)
-
-        for idx, batch in enumerate(convert_loader):
-#            reduced_graph = reduce_graph(batch, trained_model)
-#            reduced_graph = Data(x=reduced_graph.x, edge_index=reduced_graph.edge_index)
-            reduced_graph = Data(x=batch.x, edge_index=batch.edge_index)
-            nx_reduced_graph = convert_2_nx(reduced_graph)
-
-            save_graph(nx_reduced_graph, idx, folder)
-
-            # Get the class value
-            current_graph_classes = int(batch.y.data[0])
-
-            # Split the dataset into train, val, and test sets
-            if idx < train_size:
-                graph_classes['train'].append((idx, current_graph_classes))
-            elif idx < train_size + val_size:
-                graph_classes['validation'].append((idx, current_graph_classes))
-            else:
-                graph_classes['test'].append((idx, current_graph_classes))
-
-        save_classes(graph_classes, folder)
+    sorted_graph_classes = sorted(graph_classes,
+                                  key=(lambda x: x[0]))
+    save_classes(sorted_graph_classes, name_set, folder)
