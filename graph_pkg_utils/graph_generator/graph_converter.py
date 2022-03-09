@@ -92,8 +92,7 @@ def save_classes(graph_classes: List[Tuple[int, int]],
     filename = join(folder, f'{name_set}.cxl')
     with open(filename, mode='w') as f:
         f.write(newxml.toprettyxml(indent=' ', newl='\n'))
-#
-# from src.models.graph_u_net import GraphUNet
+
 
 def convert_and_save(name_set: str,
                      dataset: torch_geometric.datasets,

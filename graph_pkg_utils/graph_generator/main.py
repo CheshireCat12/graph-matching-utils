@@ -3,24 +3,30 @@ from graph_pkg_utils.graph_generator.graph_generator import generate
 from graph_pkg_utils.graph_generator.graph_converter import convert_and_save
 
 import os
+import numpy as np
+
 
 def main(args):
     """"""
-    data = generate(args.dataset, args.n_permutations, args.size_train, args.format)
+    data = generate(args.dataset,
+                    args.n_permutations,
+                    args.size_train,
+                    args.format)
 
     splits = ('train', 'validation', 'test')
 
     for set_split, index_split, (seed, permutation) in zip(*data):
-        tr_set, va_set, te_set = set_split
-        tr_idx, va_idx, te_idx = index_split
+        folder = os.path.join(args.folder,
+                              args.dataset,
+                              str(int(seed)))
+        # with open(os.path.join(folder, 'permutations.npy'), 'wb') as f:
+        np.save(os.path.join(folder, 'permutations.npy'), permutation)
 
         for set_, indices, name_set in zip(set_split, index_split, splits):
             convert_and_save(name_set=name_set,
                              dataset=set_,
                              indices=indices,
-                             folder=os.path.join(args.folder,
-                                                 args.dataset,
-                                                 str(int(seed))))
+                             folder=folder)
 
 
 if __name__ == '__main__':
@@ -49,4 +55,3 @@ if __name__ == '__main__':
                         help='Specify the folder where the generated graphs have to be saved.')
     args = parser.parse_args()
     main(args)
-

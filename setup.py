@@ -11,5 +11,7 @@ setup(
         'torch_scatter',
         'torch_sparse',
         'torch_geometric',
+        'pyvis',
+        'networkx',
     ]
 )
