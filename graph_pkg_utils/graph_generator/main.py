@@ -4,22 +4,23 @@ from graph_pkg_utils.graph_generator.graph_converter import convert_and_save
 
 import os
 import numpy as np
-
+from pathlib import Path
 
 def main(args):
     """"""
     data = generate(args.dataset,
                     args.n_permutations,
-                    args.size_train,
-                    args.format)
+                    args.size_train)
 
     splits = ('train', 'validation', 'test')
 
     for set_split, index_split, (seed, permutation) in zip(*data):
         folder = os.path.join(args.folder,
                               args.dataset,
+                              args.level,
                               str(int(seed)))
-        # with open(os.path.join(folder, 'permutations.npy'), 'wb') as f:
+        Path(folder).mkdir(parents=True, exist_ok=True)
+
         np.save(os.path.join(folder, 'permutations.npy'), permutation)
 
         for set_, indices, name_set in zip(set_split, index_split, splits):
@@ -53,5 +54,9 @@ if __name__ == '__main__':
                         type=str,
                         required=True,
                         help='Specify the folder where the generated graphs have to be saved.')
+    parser.add_argument('--level',
+                        type=str,
+                        default='100',
+                        help='Specify the level of the generated graphs.')
     args = parser.parse_args()
     main(args)
